@@ -809,6 +809,7 @@ namespace GitHub.Runner.Common.Tests.Listener
 
                 var messages = new Queue<TaskAgentMessage>();
                 messages.Enqueue(message1);
+                bool credentialsDeletedBeforeListening = false;
                 _updater.Setup(x => x.SelfUpdate(It.IsAny<AgentRefreshMessage>(), It.IsAny<IJobDispatcher>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
                         .Returns(Task.FromResult(true));
                 _configurationManager.Setup(x => x.LoadSettings())
@@ -817,9 +818,12 @@ namespace GitHub.Runner.Common.Tests.Listener
                     .Returns(true);
                 _messageListener.Setup(x => x.CreateSessionAsync(It.IsAny<CancellationToken>()))
                     .Returns(Task.FromResult<CreateSessionResult>(CreateSessionResult.Success));
+                _configurationManager.Setup(x => x.DeleteLocalRunnerCredentials())
+                    .Callback(() => credentialsDeletedBeforeListening = true);
                 _messageListener.Setup(x => x.GetNextMessageAsync(It.IsAny<CancellationToken>()))
                     .Returns(async (CancellationToken token) =>
                         {
+                            Assert.True(credentialsDeletedBeforeListening, "credentials must be deleted before the first message poll");
                             if (0 == messages.Count)
                             {
                                 await Task.Delay(2000, token);

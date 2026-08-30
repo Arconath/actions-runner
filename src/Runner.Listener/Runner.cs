@@ -244,24 +244,7 @@ namespace GitHub.Runner.Listener
                 {
                     try
                     {
-                        var fullJitConfigFile = Path.GetFullPath(jitConfigFile);
-                        var jitConfigFileInfo = new FileInfo(fullJitConfigFile);
-                        if (!jitConfigFileInfo.Exists ||
-                            jitConfigFileInfo.LinkTarget != null ||
-                            jitConfigFileInfo.Length == 0 ||
-                            jitConfigFileInfo.Length > 1024 * 1024)
-                        {
-                            throw new InvalidOperationException("JIT configuration input must be a non-empty regular file no larger than 1 MiB.");
-                        }
-                        using var stream = new FileStream(
-                            fullJitConfigFile,
-                            FileMode.Open,
-                            FileAccess.Read,
-                            FileShare.None,
-                            bufferSize: 4096,
-                            FileOptions.DeleteOnClose | FileOptions.SequentialScan);
-                        using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: false);
-                        base64JitConfig = reader.ReadToEnd();
+                        base64JitConfig = JitConfigurationFile.ReadAndDelete(jitConfigFile);
                     }
                     catch (Exception ex)
                     {
