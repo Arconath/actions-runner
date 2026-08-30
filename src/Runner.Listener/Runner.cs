@@ -240,6 +240,21 @@ namespace GitHub.Runner.Listener
                     return Constants.Runner.ReturnCode.TerminatedError;
                 }
 
+                if (!string.IsNullOrEmpty(base64JitConfig) || !string.IsNullOrEmpty(jitConfigFile))
+                {
+                    try
+                    {
+                        LinuxProcessDumpProtection.DisableForJit();
+                        Trace.Info("Disabled process dumpability for the sealed Linux JIT listener.");
+                    }
+                    catch (Exception ex)
+                    {
+                        Trace.Error(ex);
+                        _term.WriteError("Unable to disable process dumpability for the JIT listener.");
+                        return Constants.Runner.ReturnCode.TerminatedError;
+                    }
+                }
+
                 if (!string.IsNullOrEmpty(jitConfigFile))
                 {
                     try

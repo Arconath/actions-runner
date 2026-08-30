@@ -41,6 +41,19 @@ jobs:
           git merge-base --is-ancestor "$upstream" HEAD
           test "$(git rev-parse "$upstream^{commit}")" = "$upstream"
           test -f ARCONATH_PATCHES.md
+          python3 - <<'PY'
+          from pathlib import Path
+
+          source = Path("src/Runner.Listener/Runner.cs").read_text(encoding="utf-8")
+          disable = source.index("LinuxProcessDumpProtection.DisableForJit()")
+          consume = source.index("JitConfigurationFile.ReadAndDelete(jitConfigFile)")
+          if disable >= consume:
+              raise SystemExit("listener dump protection must precede JIT file consumption")
+          protection = Path("src/Runner.Listener/LinuxProcessDumpProtection.cs").read_text(encoding="utf-8")
+          for required in ("PrSetDumpable", "PrGetDumpable", "throw new Win32Exception", "throw new InvalidOperationException"):
+              if required not in protection:
+                  raise SystemExit(f"missing fail-closed dump-protection contract: {required}")
+          PY
           test "$(find .github/workflows -maxdepth 1 -type f \( -name '*.yml' -o -name '*.yaml' \) -print | wc -l)" -eq 1
           test "$(rg -l '^[[:space:]]*runs-on:' .github/workflows -g '*.yml' -g '*.yaml' | wc -l)" -eq 1
           test "$(rg -n '^[[:space:]]*group: arconath-jit$' .github/workflows -g '*.yml' -g '*.yaml' | wc -l)" -eq 1
@@ -84,4 +97,4 @@ jobs:
           cd src
           ../_dotnetsdk/8.0.424/dotnet test Test/Test.csproj \
             -c Release --no-build \
-            --filter 'FullyQualifiedName~GetsJitConfigFileArg|FullyQualifiedName~DeleteLocalRunnerCredentialsPrimesRsaAndRemovesFiles|FullyQualifiedName~CachedKeyRemainsUsableAfterCredentialFileDeletion|FullyQualifiedName~ActualStoreAndRsaCachesSurviveCredentialUnlinkIncludingMigration|FullyQualifiedName~ReloadsCachedMigratedOAuthCredentialsAfterFilesAreUnlinked|FullyQualifiedName~SealedEphemeralRunnerRejectsConfigurationRefresh|FullyQualifiedName~JitConfigurationFileL0'
+            --filter 'FullyQualifiedName~GetsJitConfigFileArg|FullyQualifiedName~DeleteLocalRunnerCredentialsPrimesRsaAndRemovesFiles|FullyQualifiedName~CachedKeyRemainsUsableAfterCredentialFileDeletion|FullyQualifiedName~ActualStoreAndRsaCachesSurviveCredentialUnlinkIncludingMigration|FullyQualifiedName~ReloadsCachedMigratedOAuthCredentialsAfterFilesAreUnlinked|FullyQualifiedName~SealedEphemeralRunnerRejectsConfigurationRefresh|FullyQualifiedName~JitConfigurationFileL0|FullyQualifiedName~LinuxProcessDumpProtectionL0'
