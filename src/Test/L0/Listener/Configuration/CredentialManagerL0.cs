@@ -1,4 +1,5 @@
 using System;
+using System.Security.Cryptography;
 using GitHub.Runner.Listener.Configuration;
 using GitHub.Services.Common;
 using Moq;
@@ -26,6 +27,7 @@ namespace GitHub.Runner.Common.Tests.Listener.Configuration
             store.Setup(x => x.HasCredentials()).Returns(false);
             store.Setup(x => x.GetCredentials()).Returns(primary);
             store.Setup(x => x.GetMigratedCredentials()).Returns(migrated);
+            keyManager.Setup(x => x.GetKey()).Returns(() => RSA.Create(2048));
             tc.SetSingleton<IConfigurationStore>(store.Object);
             tc.SetSingleton<IRSAKeyManager>(keyManager.Object);
 
