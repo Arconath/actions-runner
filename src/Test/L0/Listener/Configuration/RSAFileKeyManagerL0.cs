@@ -13,6 +13,7 @@ namespace GitHub.Runner.Common.Tests.Listener.Configuration
         public void CachedKeyRemainsUsableAfterCredentialFileDeletion()
         {
             using TestHostContext tc = new(this);
+            tc.EnqueueInstance<IProcessInvoker>(new ProcessInvokerWrapper());
             var keyManager = new RSAFileKeyManager();
             ((IRunnerService)keyManager).Initialize(tc);
 
