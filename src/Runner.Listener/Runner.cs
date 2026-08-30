@@ -31,6 +31,7 @@ namespace GitHub.Runner.Listener
 
     public sealed class Runner : RunnerService, IRunner
     {
+        internal static bool ConfigurationRefreshAllowed(RunnerSettings settings) => !settings.Ephemeral;
         private IMessageListener _listener;
         private ITerminal _term;
         private bool _inConfigStage;
@@ -244,6 +245,14 @@ namespace GitHub.Runner.Listener
                     try
                     {
                         var fullJitConfigFile = Path.GetFullPath(jitConfigFile);
+                        var jitConfigFileInfo = new FileInfo(fullJitConfigFile);
+                        if (!jitConfigFileInfo.Exists ||
+                            jitConfigFileInfo.LinkTarget != null ||
+                            jitConfigFileInfo.Length == 0 ||
+                            jitConfigFileInfo.Length > 1024 * 1024)
+                        {
+                            throw new InvalidOperationException("JIT configuration input must be a non-empty regular file no larger than 1 MiB.");
+                        }
                         using var stream = new FileStream(
                             fullJitConfigFile,
                             FileMode.Open,
@@ -846,6 +855,12 @@ namespace GitHub.Runner.Listener
                             }
                             else if (string.Equals(message.MessageType, RunnerRefreshConfigMessage.MessageType))
                             {
+                                if (!ConfigurationRefreshAllowed(settings))
+                                {
+                                    Trace.Error("Refusing configuration refresh for a sealed ephemeral runner.");
+                                    return Constants.Runner.ReturnCode.TerminatedError;
+                                }
+
                                 var runnerRefreshConfigMessage = JsonUtility.FromString<RunnerRefreshConfigMessage>(message.Body);
                                 Trace.Info($"Received RunnerRefreshConfigMessage for '{runnerRefreshConfigMessage.ConfigType}' config file");
                                 var configUpdater = HostContext.GetService<IRunnerConfigUpdater>();
@@ -961,6 +976,12 @@ namespace GitHub.Runner.Listener
 
                 if (returnCode == Constants.Runner.ReturnCode.RunnerConfigurationRefreshed)
                 {
+                    if (!ConfigurationRefreshAllowed(settings))
+                    {
+                        Trace.Error("Refusing session restart for a sealed ephemeral runner.");
+                        return Constants.Runner.ReturnCode.TerminatedError;
+                    }
+
                     Trace.Info("Runner configuration was refreshed, restarting session...");
                     // Reload settings in case they changed
                     var configManager = HostContext.GetService<IConfigurationManager>();

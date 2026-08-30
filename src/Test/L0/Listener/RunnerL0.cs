@@ -58,6 +58,15 @@ namespace GitHub.Runner.Common.Tests.Listener
             Environment.SetEnvironmentVariable("ACTIONS_RUNNER_RETURN_JOB_RESULT_FOR_HOSTED", _returnJobResultForHosted);
         }
 
+        [Fact]
+        [Trait("Level", "L0")]
+        [Trait("Category", "Runner")]
+        public void SealedEphemeralRunnerRejectsConfigurationRefresh()
+        {
+            Assert.False(Runner.Listener.Runner.ConfigurationRefreshAllowed(new RunnerSettings { Ephemeral = true }));
+            Assert.True(Runner.Listener.Runner.ConfigurationRefreshAllowed(new RunnerSettings { Ephemeral = false }));
+        }
+
         private Pipelines.AgentJobRequestMessage CreateJobRequestMessage(string jobName)
         {
             TaskOrchestrationPlanReference plan = new();
