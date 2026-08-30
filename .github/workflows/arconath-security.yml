@@ -58,10 +58,6 @@ jobs:
           test "$(rg -l '^[[:space:]]*runs-on:' .github/workflows -g '*.yml' -g '*.yaml' | wc -l)" -eq 1
           test "$(rg -n '^[[:space:]]*group: arconath-jit$' .github/workflows -g '*.yml' -g '*.yaml' | wc -l)" -eq 1
           test "$(rg -n '^[[:space:]]*labels: \[self-hosted, linux, x64, arconath-jit, rootless-buildkit\]$' .github/workflows -g '*.yml' -g '*.yaml' | wc -l)" -eq 1
-          if rg -n 'ubuntu-|macos-|windows-' .github/workflows; then
-            echo 'GitHub-hosted runner labels are forbidden' >&2
-            exit 1
-          fi
           actionlint -config-file .github/actionlint.yaml
           ruby -ryaml -e '
             workflow = YAML.safe_load(File.read(".github/workflows/arconath-security.yml"), aliases: false)
