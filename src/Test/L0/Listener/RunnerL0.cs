@@ -859,6 +859,7 @@ namespace GitHub.Runner.Common.Tests.Listener
                 _messageListener.Verify(x => x.DeleteSessionAsync(), Times.Once());
                 _messageListener.Verify(x => x.DeleteMessageAsync(It.IsAny<TaskAgentMessage>()), Times.Once());
                 _credentialManager.Verify(x => x.LoadCredentials(false), Times.Once());
+                _configurationManager.Verify(x => x.DeleteLocalRunnerCredentials(), Times.Once());
             }
         }
 

@@ -34,6 +34,20 @@ namespace GitHub.Runner.Common.Tests
         [Fact]
         [Trait("Level", "L0")]
         [Trait("Category", nameof(CommandSettings))]
+        public void GetsJitConfigFileArg()
+        {
+            using (TestHostContext hc = CreateTestContext())
+            {
+                var command = new CommandSettings(hc, args: new string[] { "run", "--jitconfigfile", "/run/runner/jitconfig" });
+
+                Assert.Equal("/run/runner/jitconfig", command.GetJitConfigFile());
+                Assert.Empty(command.GetUnknown());
+            }
+        }
+
+        [Fact]
+        [Trait("Level", "L0")]
+        [Trait("Category", nameof(CommandSettings))]
         public void GetsNameArgFromEnvVar()
         {
             using (TestHostContext hc = CreateTestContext())

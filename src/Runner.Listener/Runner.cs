@@ -232,14 +232,55 @@ namespace GitHub.Runner.Listener
                 }
 
                 var base64JitConfig = command.GetJitConfig();
+                var jitConfigFile = command.GetJitConfigFile();
+                if (!string.IsNullOrEmpty(base64JitConfig) && !string.IsNullOrEmpty(jitConfigFile))
+                {
+                    _term.WriteError("Specify only one JIT configuration input.");
+                    return Constants.Runner.ReturnCode.TerminatedError;
+                }
+
+                if (!string.IsNullOrEmpty(jitConfigFile))
+                {
+                    try
+                    {
+                        var fullJitConfigFile = Path.GetFullPath(jitConfigFile);
+                        using var stream = new FileStream(
+                            fullJitConfigFile,
+                            FileMode.Open,
+                            FileAccess.Read,
+                            FileShare.None,
+                            bufferSize: 4096,
+                            FileOptions.DeleteOnClose | FileOptions.SequentialScan);
+                        using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: false);
+                        base64JitConfig = reader.ReadToEnd();
+                    }
+                    catch (Exception ex)
+                    {
+                        Trace.Error(ex);
+                        _term.WriteError("Unable to consume the JIT configuration file.");
+                        return Constants.Runner.ReturnCode.TerminatedError;
+                    }
+                }
+
                 if (!string.IsNullOrEmpty(base64JitConfig))
                 {
                     try
                     {
                         var decodedJitConfig = Encoding.UTF8.GetString(Convert.FromBase64String(base64JitConfig));
                         var jitConfig = StringUtil.ConvertFromJson<Dictionary<string, string>>(decodedJitConfig);
+                        var allowedJitConfigFiles = new HashSet<string>(StringComparer.Ordinal)
+                        {
+                            ".runner",
+                            ".credentials",
+                            ".credentials_rsaparams",
+                        };
                         foreach (var config in jitConfig)
                         {
+                            if (!allowedJitConfigFiles.Contains(config.Key))
+                            {
+                                throw new InvalidOperationException("JIT configuration contains an unsupported file name.");
+                            }
+
                             var configFile = Path.Combine(HostContext.GetDirectory(WellKnownDirectory.Root), config.Key);
                             var configContent = Convert.FromBase64String(config.Value);
 #if OS_WINDOWS
@@ -483,6 +524,16 @@ namespace GitHub.Runner.Listener
                     {
                         return Constants.Runner.ReturnCode.TerminatedError;
                     }
+                }
+
+                // A JIT runner's Worker executes untrusted workflow code under the
+                // same operating-system account as Listener. Once the authenticated
+                // session exists, remove the credential and private-key files before
+                // accepting a job. ConfigurationStore and RSAFileKeyManager retain
+                // the required material in listener memory for reconnect/token refresh.
+                if (settings.Ephemeral)
+                {
+                    configManager.DeleteLocalRunnerCredentials();
                 }
 
                 HostContext.WritePerfCounter("SessionCreated");
