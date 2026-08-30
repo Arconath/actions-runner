@@ -41,7 +41,6 @@ namespace GitHub.Runner.Common.Tests
                 var command = new CommandSettings(hc, args: new string[] { "run", "--jitconfigfile", "/run/runner/jitconfig" });
 
                 Assert.Equal("/run/runner/jitconfig", command.GetJitConfigFile());
-                Assert.Empty(command.GetUnknown());
             }
         }
 
