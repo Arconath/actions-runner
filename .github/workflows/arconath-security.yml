@@ -1,9 +1,14 @@
 name: Arconath runner security
 
 on:
-  pull_request:
-    branches: [upstream/v2.337.0]
+  push:
+    branches: ['arconath/**']
   workflow_dispatch:
+    inputs:
+      source_commit:
+        description: Exact reviewed commit to build and test
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -14,7 +19,6 @@ concurrency:
 
 jobs:
   security:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on:
       group: arconath-jit
       labels: [self-hosted, linux, x64, arconath-jit, rootless-buildkit]
@@ -24,12 +28,16 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+          ref: ${{ inputs.source_commit || github.sha }}
 
       - name: Verify patch base and inventory
         shell: bash
+        env:
+          EXPECTED_SOURCE_COMMIT: ${{ inputs.source_commit || github.sha }}
         run: |
           set -Eeuo pipefail
           upstream=397b032cbf865e9c3ddfab89d533ec19325e1273
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_COMMIT"
           git merge-base --is-ancestor "$upstream" HEAD
           test "$(git rev-parse "$upstream^{commit}")" = "$upstream"
           test -f ARCONATH_PATCHES.md
@@ -42,6 +50,25 @@ jobs:
             exit 1
           fi
           actionlint -config-file .github/actionlint.yaml
+          ruby -ryaml -e '
+            workflow = YAML.safe_load(File.read(".github/workflows/arconath-security.yml"), aliases: false)
+            triggers = workflow.fetch(true)
+            abort "untrusted workflow trigger" unless triggers.keys.sort == ["push", "workflow_dispatch"]
+            abort "push scope mismatch" unless triggers.dig("push", "branches") == ["arconath/**"]
+            dispatch = triggers.dig("workflow_dispatch", "inputs", "source_commit")
+            abort "exact source_commit input required" unless dispatch&.fetch("required") == true
+            jobs = workflow.fetch("jobs")
+            abort "expected exactly one job" unless jobs.size == 1
+            jobs.each do |name, job|
+              abort "reusable job forbidden: #{name}" if job.key?("uses")
+              runs_on = job.fetch("runs-on")
+              expected = {
+                "group" => "arconath-jit",
+                "labels" => ["self-hosted", "linux", "x64", "arconath-jit", "rootless-buildkit"],
+              }
+              abort "runner contract mismatch: #{name}" unless runs_on == expected
+            end
+          '
 
       - name: Build Linux x64 layout
         shell: bash
@@ -57,4 +84,4 @@ jobs:
           cd src
           ../_dotnetsdk/8.0.424/dotnet test Test/Test.csproj \
             -c Release --no-build \
-            --filter 'FullyQualifiedName~GetsJitConfigFileArg|FullyQualifiedName~DeleteLocalRunnerCredentialsPrimesRsaAndRemovesFiles|FullyQualifiedName~CachedKeyRemainsUsableAfterCredentialFileDeletion|FullyQualifiedName~ReloadsCachedMigratedOAuthCredentialsAfterFilesAreUnlinked|FullyQualifiedName~SealedEphemeralRunnerRejectsConfigurationRefresh|FullyQualifiedName~JitConfigurationFileL0'
+            --filter 'FullyQualifiedName~GetsJitConfigFileArg|FullyQualifiedName~DeleteLocalRunnerCredentialsPrimesRsaAndRemovesFiles|FullyQualifiedName~CachedKeyRemainsUsableAfterCredentialFileDeletion|FullyQualifiedName~ActualStoreAndRsaCachesSurviveCredentialUnlinkIncludingMigration|FullyQualifiedName~ReloadsCachedMigratedOAuthCredentialsAfterFilesAreUnlinked|FullyQualifiedName~SealedEphemeralRunnerRejectsConfigurationRefresh|FullyQualifiedName~JitConfigurationFileL0'

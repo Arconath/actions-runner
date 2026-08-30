@@ -22,6 +22,8 @@ namespace GitHub.Runner.Listener
         private const int ONoFollow = 0x20000;
         private const int ONonBlock = 0x800;
         private const int StatxBasicStats = 0x7ff;
+        private const int FSetLease = 1024;
+        private const int FReadLock = 0;
         private const ushort FileTypeMask = 0xf000;
         private const ushort RegularFile = 0x8000;
         private const ushort Directory = 0x4000;
@@ -55,6 +57,20 @@ namespace GitHub.Runner.Listener
             internal ushort Spare;
             internal ulong Inode;
             internal ulong Size;
+            internal ulong Blocks;
+            internal ulong AttributesMask;
+            internal StatxTimestamp AccessTime;
+            internal StatxTimestamp BirthTime;
+            internal StatxTimestamp ChangeTime;
+            internal StatxTimestamp ModificationTime;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct StatxTimestamp
+        {
+            internal long Seconds;
+            internal uint Nanoseconds;
+            internal int Reserved;
         }
 
         [DllImport("libc", SetLastError = true)]
@@ -68,6 +84,9 @@ namespace GitHub.Runner.Listener
 
         [DllImport("libc", SetLastError = true)]
         private static extern int unlinkat(int directory, string pathname, int flags);
+
+        [DllImport("libc", SetLastError = true)]
+        private static extern int fcntl(int descriptor, int command, int argument);
 
         [DllImport("libc")]
         private static extern uint geteuid();
@@ -122,6 +141,10 @@ namespace GitHub.Runner.Listener
                     "jitconfig",
                     OCloseOnExec | ONoFollow | ONonBlock);
                 int configDescriptor = configHandle.DangerousGetHandle().ToInt32();
+                if (fcntl(configDescriptor, FSetLease, FReadLock) != 0)
+                {
+                    ThrowLastError("seal JIT configuration against concurrent writers");
+                }
                 Statx before = GetStatus(configDescriptor);
                 if ((before.Mode & FileTypeMask) != RegularFile ||
                     before.UserId != geteuid() ||
@@ -139,7 +162,12 @@ namespace GitHub.Runner.Listener
                     ThrowLastError("unlink JIT configuration");
                 }
                 Statx unlinked = GetStatus(configDescriptor);
-                if (unlinked.Inode != before.Inode || unlinked.LinkCount != 0)
+                if (unlinked.Inode != before.Inode ||
+                    unlinked.LinkCount != 0 ||
+                    unlinked.UserId != before.UserId ||
+                    unlinked.GroupId != before.GroupId ||
+                    unlinked.Mode != before.Mode ||
+                    unlinked.Size != before.Size)
                 {
                     throw new InvalidOperationException("Opened JIT configuration inode was not sealed by unlink.");
                 }
@@ -160,8 +188,15 @@ namespace GitHub.Runner.Listener
                 Statx after = GetStatus(configDescriptor);
                 if (content.Length == 0 ||
                     content.Length > MaximumBytes ||
-                    after.Size != before.Size ||
-                    after.Size != (ulong)content.Length)
+                    after.Size != unlinked.Size ||
+                    after.Size != (ulong)content.Length ||
+                    after.UserId != unlinked.UserId ||
+                    after.GroupId != unlinked.GroupId ||
+                    after.Mode != unlinked.Mode ||
+                    after.ChangeTime.Seconds != unlinked.ChangeTime.Seconds ||
+                    after.ChangeTime.Nanoseconds != unlinked.ChangeTime.Nanoseconds ||
+                    after.ModificationTime.Seconds != unlinked.ModificationTime.Seconds ||
+                    after.ModificationTime.Nanoseconds != unlinked.ModificationTime.Nanoseconds)
                 {
                     throw new InvalidOperationException("JIT configuration changed while it was being consumed.");
                 }

@@ -28,6 +28,7 @@ namespace GitHub.Runner.Common.Tests
         private AssemblyLoadContext _loadContext;
         private string _tempDirectoryRoot = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("D"));
         private StartupType _startupType;
+        public string RootDirectoryOverride { get; set; }
         public event EventHandler Unloading;
         public event EventHandler<DelayEventArgs> Delaying;
         public event EventHandler<AuthMigrationEventArgs> AuthMigrationChanged;
@@ -201,7 +202,9 @@ namespace GitHub.Runner.Common.Tests
                     break;
 
                 case WellKnownDirectory.Root:
-                    path = new DirectoryInfo(GetDirectory(WellKnownDirectory.Bin)).Parent.FullName;
+                    path = !string.IsNullOrEmpty(RootDirectoryOverride)
+                        ? RootDirectoryOverride
+                        : new DirectoryInfo(GetDirectory(WellKnownDirectory.Bin)).Parent.FullName;
                     break;
 
                 case WellKnownDirectory.Temp:

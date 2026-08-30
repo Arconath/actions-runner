@@ -105,17 +105,28 @@ namespace GitHub.Runner.Common.Tests.Listener
         [Fact]
         [Trait("Level", "L0")]
         [Trait("Category", "Runner")]
-        public void RejectsGrowthAndReplacementRaces()
+        public void RejectsConcurrentWriterAndReplacementRaces()
         {
             if (!OperatingSystem.IsLinux())
             {
                 return;
             }
-            string growing = CreateConfig("initial", "growth");
-            Assert.Throws<InvalidOperationException>(() => JitConfigurationFile.ReadAndDelete(
-                growing,
-                _root,
-                () => File.AppendAllText(growing, "-changed")));
+            string sameLength = CreateConfig("initial", "sameLength");
+            using (FileStream writer = new(sameLength, FileMode.Open, FileAccess.Write, FileShare.ReadWrite))
+            {
+                writer.Write("changed"u8);
+                writer.Flush(flushToDisk: true);
+                Assert.ThrowsAny<IOException>(() => JitConfigurationFile.ReadAndDelete(sameLength, _root));
+            }
+
+            string truncateRegrow = CreateConfig("original", "truncateRegrow");
+            using (FileStream writer = new(truncateRegrow, FileMode.Open, FileAccess.Write, FileShare.ReadWrite))
+            {
+                writer.SetLength(0);
+                writer.Write("regrown!"u8);
+                writer.Flush(flushToDisk: true);
+                Assert.ThrowsAny<IOException>(() => JitConfigurationFile.ReadAndDelete(truncateRegrow, _root));
+            }
 
             string raced = CreateConfig("original", "race");
             string moved = raced + ".moved";

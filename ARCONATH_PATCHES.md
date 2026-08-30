@@ -13,8 +13,9 @@ The runner consumes JIT configuration from a bounded one-shot file rather than
 an argument or secret-bearing environment variable. Linux `openat2` resolves
 the file beneath the pinned job root without symlinks; `statx` requires a
 runner-owned mode-0600 regular inode with one link. The opened inode is unlinked
-before a bounded read, with post-read size/inode checks rejecting replacement
-or growth races. Only the three pinned v2.337.0 configuration filenames are
+before a bounded read. A Linux read lease rejects pre-existing and concurrent
+writers, while post-unlink metadata checks reject ownership, mode, size, and
+timestamp changes. Only the three pinned v2.337.0 configuration filenames are
 accepted. After the authenticated session
 is created, credential and RSA files are unlinked before the listener accepts a
 job. Credential data and RSA parameters remain in listener memory for token
@@ -27,3 +28,9 @@ JIT job, credential-file absence before `Listening for Jobs`, no JIT secret in
 argv/environment, reconnect evidence, and complete cgroup/filesystem/runner
 registration cleanup. Roll back only to an earlier reviewed Arconath build; the
 unpatched upstream v2.337.0 binary does not provide this boundary.
+
+The repository-owned security workflow never runs pull-request-authored code on
+the private runner. Automatic checks run only after a collaborator pushes an
+`arconath/**` branch to this repository; manual runs must name the exact reviewed
+commit. Every job is parsed and required to use the canonical `arconath-jit`
+runner group and complete label tuple.
