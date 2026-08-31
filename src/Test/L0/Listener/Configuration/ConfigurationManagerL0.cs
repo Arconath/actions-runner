@@ -354,6 +354,35 @@ namespace GitHub.Runner.Common.Tests.Listener.Configuration
         [Fact]
         [Trait("Level", "L0")]
         [Trait("Category", "ConfigurationManagement")]
+        public void DeleteLocalRunnerCredentialsPrimesRsaAndRemovesFiles()
+        {
+            using (TestHostContext tc = CreateTestContext())
+            using (RSA key = RSA.Create())
+            {
+                IConfigurationManager configManager = new ConfigurationManager();
+                configManager.Initialize(tc);
+
+                _store.SetupSequence(x => x.HasCredentials())
+                    .Returns(true)
+                    .Returns(false);
+                _store.Setup(x => x.GetCredentials()).Returns(new CredentialData
+                {
+                    Scheme = Constants.Configuration.OAuth,
+                });
+                _store.Setup(x => x.GetMigratedCredentials()).Returns((CredentialData)null);
+                _rsaKeyManager.Setup(x => x.GetKey()).Returns(key);
+
+                configManager.DeleteLocalRunnerCredentials();
+
+                _rsaKeyManager.Verify(x => x.GetKey(), Times.Once);
+                _store.Verify(x => x.DeleteCredential(), Times.Once);
+                _rsaKeyManager.Verify(x => x.DeleteKey(), Times.Once);
+            }
+        }
+
+        [Fact]
+        [Trait("Level", "L0")]
+        [Trait("Category", "ConfigurationManagement")]
         public async Task ConfigureRunnerServiceFailsOnUnconfiguredRunners()
         {
             using (TestHostContext tc = CreateTestContext())

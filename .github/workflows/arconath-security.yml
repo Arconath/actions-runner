@@ -1,0 +1,111 @@
+name: Arconath runner security
+
+on:
+  push:
+    # A protected default branch is the only automatic source allowed to reach
+    # the private runner. Patch branches are validated after they are merged;
+    # they must never execute unreviewed source on the runner fleet.
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: actions-runner-security
+  cancel-in-progress: false
+
+jobs:
+  security:
+    # This is deliberately fail-closed. `ref_protected` is false for an
+    # unprotected branch/tag, so a newly-created or manually-selected ref can
+    # only produce a skipped job and can never schedule on arconath-jit.
+    if: >-
+      github.repository == 'Arconath/actions-runner' &&
+      github.ref == 'refs/heads/main' &&
+      github.ref_type == 'branch' &&
+      github.ref_protected == true &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on:
+      group: arconath-jit
+      labels: [self-hosted, linux, x64, arconath-jit, rootless-buildkit]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@8f4b7f84864484a7bf31766abe9204da3cbe65b3 # v4.2.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify patch base and inventory
+        shell: bash
+        env:
+          EXPECTED_SOURCE_COMMIT: ${{ github.sha }}
+          EXPECTED_REPOSITORY: Arconath/actions-runner
+          EXPECTED_REF: refs/heads/main
+        run: |
+          set -Eeuo pipefail
+          [[ "$GITHUB_REPOSITORY" == "$EXPECTED_REPOSITORY" ]]
+          [[ "$GITHUB_REF" == "$EXPECTED_REF" ]]
+          [[ "$GITHUB_REF_TYPE" == branch ]]
+          [[ "$GITHUB_REF_PROTECTED" == true ]]
+          python3 scripts/verify-arconath-workflow.py
+          upstream=397b032cbf865e9c3ddfab89d533ec19325e1273
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_COMMIT"
+          git merge-base --is-ancestor "$upstream" HEAD
+          test "$(git rev-parse "$upstream^{commit}")" = "$upstream"
+          test -f ARCONATH_PATCHES.md
+          python3 - <<'PY'
+          from pathlib import Path
+
+          source = Path("src/Runner.Listener/Runner.cs").read_text(encoding="utf-8")
+          disable = source.index("LinuxProcessDumpProtection.DisableForJit()")
+          consume = source.index("JitConfigurationFile.ReadAndDelete(jitConfigFile)")
+          if disable >= consume:
+              raise SystemExit("listener dump protection must precede JIT file consumption")
+          protection = Path("src/Runner.Listener/LinuxProcessDumpProtection.cs").read_text(encoding="utf-8")
+          for required in ("PrSetDumpable", "PrGetDumpable", "throw new Win32Exception", "throw new InvalidOperationException"):
+              if required not in protection:
+                  raise SystemExit(f"missing fail-closed dump-protection contract: {required}")
+          PY
+          test "$(find .github/workflows -maxdepth 1 -type f \( -name '*.yml' -o -name '*.yaml' \) -print | wc -l)" -eq 1
+          test "$(rg -l '^[[:space:]]*runs-on:' .github/workflows -g '*.yml' -g '*.yaml' | wc -l)" -eq 1
+          test "$(rg -n '^[[:space:]]*group: arconath-jit$' .github/workflows -g '*.yml' -g '*.yaml' | wc -l)" -eq 1
+          test "$(rg -n '^[[:space:]]*labels: \[self-hosted, linux, x64, arconath-jit, rootless-buildkit\]$' .github/workflows -g '*.yml' -g '*.yaml' | wc -l)" -eq 1
+          actionlint -config-file .github/actionlint.yaml
+          ruby -ryaml -e '
+            workflow = YAML.safe_load(File.read(".github/workflows/arconath-security.yml"), aliases: false)
+            triggers = workflow.fetch(true)
+            abort "untrusted workflow trigger" unless triggers.keys.sort == ["push", "workflow_dispatch"]
+            abort "push scope mismatch" unless triggers.dig("push", "branches") == ["main"]
+            abort "arbitrary source input is forbidden" if triggers.dig("workflow_dispatch", "inputs")
+            jobs = workflow.fetch("jobs")
+            abort "expected exactly one job" unless jobs.size == 1
+            jobs.each do |name, job|
+              abort "reusable job forbidden: #{name}" if job.key?("uses")
+              abort "job must require a protected trusted ref" unless job.fetch("if").include?("github.ref_protected == true")
+              abort "job repository pin missing" unless job.fetch("if").include?("github.repository == \x27Arconath/actions-runner\x27")
+              abort "job ref pin missing" unless job.fetch("if").include?("github.ref == \x27refs/heads/main\x27")
+              runs_on = job.fetch("runs-on")
+              expected = {
+                "group" => "arconath-jit",
+                "labels" => ["self-hosted", "linux", "x64", "arconath-jit", "rootless-buildkit"],
+              }
+              abort "runner contract mismatch: #{name}" unless runs_on == expected
+            end
+          '
+
+      - name: Build Linux x64 layout
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd src
+          ./dev.sh layout Release
+
+      - name: Run credential security tests
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd src
+          ../_dotnetsdk/8.0.424/dotnet test Test/Test.csproj \
+            -c Release --no-build \
+            --filter 'FullyQualifiedName~GetsJitConfigFileArg|FullyQualifiedName~DeleteLocalRunnerCredentialsPrimesRsaAndRemovesFiles|FullyQualifiedName~CachedKeyRemainsUsableAfterCredentialFileDeletion|FullyQualifiedName~ActualStoreAndRsaCachesSurviveCredentialUnlinkIncludingMigration|FullyQualifiedName~ReloadsCachedMigratedOAuthCredentialsAfterFilesAreUnlinked|FullyQualifiedName~SealedEphemeralRunnerRejectsConfigurationRefresh|FullyQualifiedName~JitConfigurationFileL0|FullyQualifiedName~LinuxProcessDumpProtectionL0'

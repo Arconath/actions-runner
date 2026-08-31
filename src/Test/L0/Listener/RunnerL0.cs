@@ -58,6 +58,15 @@ namespace GitHub.Runner.Common.Tests.Listener
             Environment.SetEnvironmentVariable("ACTIONS_RUNNER_RETURN_JOB_RESULT_FOR_HOSTED", _returnJobResultForHosted);
         }
 
+        [Fact]
+        [Trait("Level", "L0")]
+        [Trait("Category", "Runner")]
+        public void SealedEphemeralRunnerRejectsConfigurationRefresh()
+        {
+            Assert.False(Runner.Listener.Runner.ConfigurationRefreshAllowed(new RunnerSettings { Ephemeral = true }));
+            Assert.True(Runner.Listener.Runner.ConfigurationRefreshAllowed(new RunnerSettings { Ephemeral = false }));
+        }
+
         private Pipelines.AgentJobRequestMessage CreateJobRequestMessage(string jobName)
         {
             TaskOrchestrationPlanReference plan = new();
@@ -800,6 +809,7 @@ namespace GitHub.Runner.Common.Tests.Listener
 
                 var messages = new Queue<TaskAgentMessage>();
                 messages.Enqueue(message1);
+                bool credentialsDeletedBeforeListening = false;
                 _updater.Setup(x => x.SelfUpdate(It.IsAny<AgentRefreshMessage>(), It.IsAny<IJobDispatcher>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
                         .Returns(Task.FromResult(true));
                 _configurationManager.Setup(x => x.LoadSettings())
@@ -808,9 +818,12 @@ namespace GitHub.Runner.Common.Tests.Listener
                     .Returns(true);
                 _messageListener.Setup(x => x.CreateSessionAsync(It.IsAny<CancellationToken>()))
                     .Returns(Task.FromResult<CreateSessionResult>(CreateSessionResult.Success));
+                _configurationManager.Setup(x => x.DeleteLocalRunnerCredentials())
+                    .Callback(() => credentialsDeletedBeforeListening = true);
                 _messageListener.Setup(x => x.GetNextMessageAsync(It.IsAny<CancellationToken>()))
                     .Returns(async (CancellationToken token) =>
                         {
+                            Assert.True(credentialsDeletedBeforeListening, "credentials must be deleted before the first message poll");
                             if (0 == messages.Count)
                             {
                                 await Task.Delay(2000, token);
@@ -859,6 +872,7 @@ namespace GitHub.Runner.Common.Tests.Listener
                 _messageListener.Verify(x => x.DeleteSessionAsync(), Times.Once());
                 _messageListener.Verify(x => x.DeleteMessageAsync(It.IsAny<TaskAgentMessage>()), Times.Once());
                 _credentialManager.Verify(x => x.LoadCredentials(false), Times.Once());
+                _configurationManager.Verify(x => x.DeleteLocalRunnerCredentials(), Times.Once());
             }
         }
 

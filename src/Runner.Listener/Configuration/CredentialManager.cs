@@ -44,12 +44,11 @@ namespace GitHub.Runner.Listener.Configuration
         {
             IConfigurationStore store = HostContext.GetService<IConfigurationStore>();
 
-            if (!store.HasCredentials())
+            CredentialData credData = store.GetCredentials();
+            if (credData == null)
             {
                 throw new InvalidOperationException("Credentials not stored. Must reconfigure.");
             }
-
-            CredentialData credData = store.GetCredentials();
             var migratedCred = store.GetMigratedCredentials();
             if (migratedCred != null &&
                 migratedCred.Scheme == Constants.Configuration.OAuth)

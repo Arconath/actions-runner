@@ -13,6 +13,8 @@ namespace GitHub.Runner.Listener.Configuration
     {
         private string _keyFile;
         private IHostContext _context;
+        private readonly object _keyLock = new();
+        private RSAParameters? _keyParameters;
 
         public RSA CreateKey()
         {
@@ -35,6 +37,11 @@ namespace GitHub.Runner.Listener.Configuration
                 rsa.ImportParameters(LoadParameters());
             }
 
+            lock (_keyLock)
+            {
+                _keyParameters = rsa.ExportParameters(true);
+            }
+
             return rsa;
         }
 
@@ -49,15 +56,25 @@ namespace GitHub.Runner.Listener.Configuration
 
         public RSA GetKey()
         {
-            if (!File.Exists(_keyFile))
+            RSAParameters parameters;
+            lock (_keyLock)
             {
-                throw new CryptographicException($"RSA key file {_keyFile} was not found");
+                if (!_keyParameters.HasValue)
+                {
+                    if (!File.Exists(_keyFile))
+                    {
+                        throw new CryptographicException($"RSA key file {_keyFile} was not found");
+                    }
+
+                    Trace.Info("Loading RSA key parameters from file {0}", _keyFile);
+                    _keyParameters = LoadParameters();
+                }
+
+                parameters = _keyParameters.Value;
             }
 
-            Trace.Info("Loading RSA key parameters from file {0}", _keyFile);
-
             var rsa = RSA.Create();
-            rsa.ImportParameters(LoadParameters());
+            rsa.ImportParameters(parameters);
             return rsa;
         }
 

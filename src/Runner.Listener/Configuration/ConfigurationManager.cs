@@ -25,6 +25,7 @@ namespace GitHub.Runner.Listener.Configuration
         Task UnconfigureAsync(CommandSettings command);
         void DeleteLocalRunnerConfig();
         RunnerSettings LoadSettings();
+        void DeleteLocalRunnerCredentials();
         RunnerSettings LoadMigratedSettings();
     }
 
@@ -65,6 +66,38 @@ namespace GitHub.Runner.Listener.Configuration
             Trace.Info("Settings Loaded");
 
             return settings;
+        }
+
+        // Ephemeral runners must not expose their registration credential or private
+        // key to the untrusted job process, which runs under the runner account.
+        // The listener has already created its authenticated session before this is
+        // called. Prime the in-memory credential/key caches, then unlink only the
+        // sensitive files; .runner remains because Runner.Worker reads it.
+        public void DeleteLocalRunnerCredentials()
+        {
+            if (!_store.HasCredentials())
+            {
+                throw new InvalidOperationException("Credentials must exist before sealing an ephemeral runner.");
+            }
+
+            var credentials = _store.GetCredentials();
+            var migratedCredentials = _store.GetMigratedCredentials();
+            bool requiresRsaKey = credentials?.Scheme == Constants.Configuration.OAuth ||
+                                  migratedCredentials?.Scheme == Constants.Configuration.OAuth;
+
+            var keyManager = HostContext.GetService<IRSAKeyManager>();
+            if (requiresRsaKey)
+            {
+                using var key = keyManager.GetKey();
+            }
+
+            _store.DeleteCredential();
+            keyManager.DeleteKey();
+
+            if (_store.HasCredentials())
+            {
+                throw new InvalidOperationException("Credential files remain after sealing an ephemeral runner.");
+            }
         }
 
         public RunnerSettings LoadMigratedSettings()

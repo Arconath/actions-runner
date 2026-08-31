@@ -110,6 +110,7 @@ namespace GitHub.Runner.Common
                     public static readonly string PAT = "pat";
                     public static readonly string WindowsLogonPassword = "windowslogonpassword";
                     public static readonly string JitConfig = "jitconfig";
+                    public static readonly string JitConfigFile = "jitconfigfile";
                     public static string[] Secrets => new[]
                     {
                         PAT,

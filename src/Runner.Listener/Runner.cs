@@ -31,6 +31,7 @@ namespace GitHub.Runner.Listener
 
     public sealed class Runner : RunnerService, IRunner
     {
+        internal static bool ConfigurationRefreshAllowed(RunnerSettings settings) => !settings.Ephemeral;
         private IMessageListener _listener;
         private ITerminal _term;
         private bool _inConfigStage;
@@ -232,14 +233,61 @@ namespace GitHub.Runner.Listener
                 }
 
                 var base64JitConfig = command.GetJitConfig();
+                var jitConfigFile = command.GetJitConfigFile();
+                if (!string.IsNullOrEmpty(base64JitConfig) && !string.IsNullOrEmpty(jitConfigFile))
+                {
+                    _term.WriteError("Specify only one JIT configuration input.");
+                    return Constants.Runner.ReturnCode.TerminatedError;
+                }
+
+                if (!string.IsNullOrEmpty(base64JitConfig) || !string.IsNullOrEmpty(jitConfigFile))
+                {
+                    try
+                    {
+                        LinuxProcessDumpProtection.DisableForJit();
+                        Trace.Info("Disabled process dumpability for the sealed Linux JIT listener.");
+                    }
+                    catch (Exception ex)
+                    {
+                        Trace.Error(ex);
+                        _term.WriteError("Unable to disable process dumpability for the JIT listener.");
+                        return Constants.Runner.ReturnCode.TerminatedError;
+                    }
+                }
+
+                if (!string.IsNullOrEmpty(jitConfigFile))
+                {
+                    try
+                    {
+                        base64JitConfig = JitConfigurationFile.ReadAndDelete(jitConfigFile);
+                    }
+                    catch (Exception ex)
+                    {
+                        Trace.Error(ex);
+                        _term.WriteError("Unable to consume the JIT configuration file.");
+                        return Constants.Runner.ReturnCode.TerminatedError;
+                    }
+                }
+
                 if (!string.IsNullOrEmpty(base64JitConfig))
                 {
                     try
                     {
                         var decodedJitConfig = Encoding.UTF8.GetString(Convert.FromBase64String(base64JitConfig));
                         var jitConfig = StringUtil.ConvertFromJson<Dictionary<string, string>>(decodedJitConfig);
+                        var allowedJitConfigFiles = new HashSet<string>(StringComparer.Ordinal)
+                        {
+                            ".runner",
+                            ".credentials",
+                            ".credentials_rsaparams",
+                        };
                         foreach (var config in jitConfig)
                         {
+                            if (!allowedJitConfigFiles.Contains(config.Key))
+                            {
+                                throw new InvalidOperationException("JIT configuration contains an unsupported file name.");
+                            }
+
                             var configFile = Path.Combine(HostContext.GetDirectory(WellKnownDirectory.Root), config.Key);
                             var configContent = Convert.FromBase64String(config.Value);
 #if OS_WINDOWS
@@ -483,6 +531,16 @@ namespace GitHub.Runner.Listener
                     {
                         return Constants.Runner.ReturnCode.TerminatedError;
                     }
+                }
+
+                // A JIT runner's Worker executes untrusted workflow code under the
+                // same operating-system account as Listener. Once the authenticated
+                // session exists, remove the credential and private-key files before
+                // accepting a job. ConfigurationStore and RSAFileKeyManager retain
+                // the required material in listener memory for reconnect/token refresh.
+                if (settings.Ephemeral)
+                {
+                    configManager.DeleteLocalRunnerCredentials();
                 }
 
                 HostContext.WritePerfCounter("SessionCreated");
@@ -795,6 +853,12 @@ namespace GitHub.Runner.Listener
                             }
                             else if (string.Equals(message.MessageType, RunnerRefreshConfigMessage.MessageType))
                             {
+                                if (!ConfigurationRefreshAllowed(settings))
+                                {
+                                    Trace.Error("Refusing configuration refresh for a sealed ephemeral runner.");
+                                    return Constants.Runner.ReturnCode.TerminatedError;
+                                }
+
                                 var runnerRefreshConfigMessage = JsonUtility.FromString<RunnerRefreshConfigMessage>(message.Body);
                                 Trace.Info($"Received RunnerRefreshConfigMessage for '{runnerRefreshConfigMessage.ConfigType}' config file");
                                 var configUpdater = HostContext.GetService<IRunnerConfigUpdater>();
@@ -910,6 +974,12 @@ namespace GitHub.Runner.Listener
 
                 if (returnCode == Constants.Runner.ReturnCode.RunnerConfigurationRefreshed)
                 {
+                    if (!ConfigurationRefreshAllowed(settings))
+                    {
+                        Trace.Error("Refusing session restart for a sealed ephemeral runner.");
+                        return Constants.Runner.ReturnCode.TerminatedError;
+                    }
+
                     Trace.Info("Runner configuration was refreshed, restarting session...");
                     // Reload settings in case they changed
                     var configManager = HostContext.GetService<IConfigurationManager>();

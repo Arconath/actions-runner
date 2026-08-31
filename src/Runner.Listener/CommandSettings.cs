@@ -66,6 +66,7 @@ namespace GitHub.Runner.Listener
                 {
                     Constants.Runner.CommandLine.Flags.Once,
                     Constants.Runner.CommandLine.Args.JitConfig,
+                    Constants.Runner.CommandLine.Args.JitConfigFile,
                     Constants.Runner.CommandLine.Args.StartupType
                 },
             // valid warmup flags and args
@@ -223,6 +224,12 @@ namespace GitHub.Runner.Listener
         {
             return GetArg(
                 name: Constants.Runner.CommandLine.Args.JitConfig);
+        }
+
+        public string GetJitConfigFile()
+        {
+            return GetArg(
+                name: Constants.Runner.CommandLine.Args.JitConfigFile);
         }
 
         public string GetRunnerName()
