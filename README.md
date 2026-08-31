@@ -37,3 +37,15 @@ We are taking the following steps to better direct requests related to GitHub Ac
 We will still provide security updates for this project and fix major breaking changes during this time.
 
 You are welcome to still raise bugs in this repo.
+
+## Arconath maintainer documentation
+
+This checkout is a maintained fork of the GitHub Actions runner used for the
+private Arconath JIT fleet. It is not a general-purpose replacement for the
+upstream runner.
+
+- [Documentation index](docs/README.md)
+- [AI/agent context](docs/AI-CONTEXT.md)
+- [Current status and blockers](docs/STATUS.md)
+- [Arconath patch queue](ARCONATH_PATCHES.md)
+- [Organization JIT runner operating contract](../../organization/runner/README.md)

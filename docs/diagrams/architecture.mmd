@@ -1,0 +1,20 @@
+%% Sources: ARCONATH_PATCHES.md; src/Runner.Listener/; run.sh; config.sh; docs/AI-CONTEXT.md
+flowchart LR
+  workflow["Protected workflow<br/>same-repository gate"] --> manager["platform/organization runner manager<br/>JIT configuration"]
+  manager --> config["One-shot JIT config<br/>file-backed short-lived credential"]
+  config --> runner["Arconath Runner fork<br/>credential-seal patch"]
+  runner --> unlink["Seal + unlink sensitive files<br/>before listener"]
+  unlink --> job["One job<br/>rootless private runner"]
+  job --> cleanup["Cleanup + dump protection<br/>no credential residue"]
+  egress["R640 egress policy<br/>deny-by-default"] -. gate .-> job
+  blocker["Not evidenced<br/>live host · JIT · provenance · negative probes"] -.-> manager
+
+  classDef source fill:#e8f1ff,stroke:#2563eb,color:#0f172a;
+  classDef owned fill:#e0f2fe,stroke:#0284c7,color:#0c4a6e;
+  classDef control fill:#f3e8ff,stroke:#7c3aed,color:#3b0764;
+  classDef blocked fill:#fff7ed,stroke:#ea580c,color:#7c2d12;
+  class workflow source;
+  class manager,config,runner,unlink,job,cleanup owned;
+  class egress control;
+  class blocker blocked;
+
