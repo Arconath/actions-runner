@@ -28,6 +28,11 @@ entries inaccessible to the same-UID workflow process under the required
 `ProtectProc=ptraceable` and Yama policy; the separately executed Worker keeps
 normal job behavior.
 
+The job root may use mode 0750 with no group/other write bits so the distinct
+worker identity can traverse the disposable workspace after the listener has
+consumed the 0600 JIT file. The JIT file itself remains listener-owned and
+unreadable to the worker; mode 0700 is also accepted for standalone validation.
+
 Compatibility requires Linux-x64 layout build, focused unsafe-file and
 credential-order L0 security tests, a real
 JIT job, credential-file absence before `Listening for Jobs`, no JIT secret in

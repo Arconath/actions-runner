@@ -30,6 +30,7 @@ namespace GitHub.Runner.Listener
         private const ushort PermissionAndSpecialBits = 0x0fff;
         private const ushort OwnerReadWrite = 0x0180;
         private const ushort OwnerAll = 0x01c0;
+        private const ushort GroupReadExecute = 0x0028;
         private const ulong ResolveNoMagicLinks = 0x02;
         private const ulong ResolveNoSymlinks = 0x04;
         private const ulong ResolveBeneath = 0x08;
@@ -129,11 +130,13 @@ namespace GitHub.Runner.Listener
 
                 using SafeFileHandle jobHandle = OpenBeneath(rootDescriptor, jobName, OPath | ODirectory | OCloseOnExec);
                 Statx jobStatus = GetStatus(jobHandle.DangerousGetHandle().ToInt32());
+                ushort jobPermissions = (ushort)(jobStatus.Mode & PermissionAndSpecialBits);
                 if ((jobStatus.Mode & FileTypeMask) != Directory ||
                     jobStatus.UserId != geteuid() ||
-                    (jobStatus.Mode & PermissionAndSpecialBits) != OwnerAll)
+                    (jobPermissions != OwnerAll &&
+                     jobPermissions != (OwnerAll | GroupReadExecute)))
                 {
-                    throw new InvalidOperationException("JIT job directory must be owned by the runner and mode 0700.");
+                    throw new InvalidOperationException("JIT job directory must be runner-owned and mode 0700 or 0750.");
                 }
 
                 using SafeFileHandle configHandle = OpenBeneath(

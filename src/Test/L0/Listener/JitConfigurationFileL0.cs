@@ -43,6 +43,25 @@ namespace GitHub.Runner.Common.Tests.Listener
         [Fact]
         [Trait("Level", "L0")]
         [Trait("Category", "Runner")]
+        public void ReadsAndUnlinksWithSharedTraversalDirectory()
+        {
+            if (!OperatingSystem.IsLinux())
+            {
+                return;
+            }
+            string path = CreateConfig(
+                "shared",
+                "shared",
+                UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute |
+                    UnixFileMode.GroupRead | UnixFileMode.GroupExecute);
+
+            Assert.Equal("shared", JitConfigurationFile.ReadAndDelete(path, _root));
+            Assert.False(File.Exists(path));
+        }
+
+        [Fact]
+        [Trait("Level", "L0")]
+        [Trait("Category", "Runner")]
         public void RejectsDirectAndParentSymlinks()
         {
             if (!OperatingSystem.IsLinux())
@@ -142,20 +161,25 @@ namespace GitHub.Runner.Common.Tests.Listener
             Assert.True(File.Exists(moved));
         }
 
-        private string CreateConfig(string content, string suffix = "valid")
+        private string CreateConfig(
+            string content,
+            string suffix = "valid",
+            UnixFileMode jobMode = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute)
         {
-            string job = CreateJobDirectory(suffix);
+            string job = CreateJobDirectory(suffix, jobMode);
             string path = Path.Combine(job, "jitconfig");
             File.WriteAllText(path, content);
             File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
             return path;
         }
 
-        private string CreateJobDirectory(string suffix)
+        private string CreateJobDirectory(
+            string suffix,
+            UnixFileMode mode = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute)
         {
             string job = Path.Combine(_root, $"job.{suffix}");
             Directory.CreateDirectory(job);
-            File.SetUnixFileMode(job, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+            File.SetUnixFileMode(job, mode);
             return job;
         }
 
