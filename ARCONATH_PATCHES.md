@@ -37,8 +37,12 @@ cgroup/filesystem/runner registration cleanup. Roll back only to an earlier
 reviewed Arconath build; the unpatched upstream v2.337.0 binary does not provide
 this boundary.
 
-The repository-owned security workflow never runs pull-request-authored code on
-the private runner. Automatic checks run only after a collaborator pushes an
-`arconath/**` branch to this repository; manual runs must name the exact reviewed
-commit. Every job is parsed and required to use the canonical `arconath-jit`
-runner group and complete label tuple.
+The repository-owned security workflow never runs pull-request-authored or
+manually-selected source on the private runner. Automatic and manual checks
+are eligible only from the protected `main` ref; an unprotected ref produces a
+skipped job. The workflow checks the repository, ref, ref type, and
+`ref_protected` value both in the job condition and in the runner preflight.
+Every job is parsed and required to use the canonical `arconath-jit` runner
+group and complete label tuple. Branch protection is therefore a deployment
+prerequisite for this workflow; it must remain disabled until that protection
+is present.

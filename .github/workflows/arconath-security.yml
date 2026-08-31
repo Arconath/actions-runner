@@ -2,13 +2,11 @@ name: Arconath runner security
 
 on:
   push:
-    branches: ['arconath/**']
+    # A protected default branch is the only automatic source allowed to reach
+    # the private runner. Patch branches are validated after they are merged;
+    # they must never execute unreviewed source on the runner fleet.
+    branches: [main]
   workflow_dispatch:
-    inputs:
-      source_commit:
-        description: Exact reviewed commit to build and test
-        required: true
-        type: string
 
 permissions:
   contents: read
@@ -19,6 +17,15 @@ concurrency:
 
 jobs:
   security:
+    # This is deliberately fail-closed. `ref_protected` is false for an
+    # unprotected branch/tag, so a newly-created or manually-selected ref can
+    # only produce a skipped job and can never schedule on arconath-jit.
+    if: >-
+      github.repository == 'Arconath/actions-runner' &&
+      github.ref == 'refs/heads/main' &&
+      github.ref_type == 'branch' &&
+      github.ref_protected == true &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on:
       group: arconath-jit
       labels: [self-hosted, linux, x64, arconath-jit, rootless-buildkit]
@@ -28,14 +35,20 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-          ref: ${{ inputs.source_commit || github.sha }}
 
       - name: Verify patch base and inventory
         shell: bash
         env:
-          EXPECTED_SOURCE_COMMIT: ${{ inputs.source_commit || github.sha }}
+          EXPECTED_SOURCE_COMMIT: ${{ github.sha }}
+          EXPECTED_REPOSITORY: Arconath/actions-runner
+          EXPECTED_REF: refs/heads/main
         run: |
           set -Eeuo pipefail
+          [[ "$GITHUB_REPOSITORY" == "$EXPECTED_REPOSITORY" ]]
+          [[ "$GITHUB_REF" == "$EXPECTED_REF" ]]
+          [[ "$GITHUB_REF_TYPE" == branch ]]
+          [[ "$GITHUB_REF_PROTECTED" == true ]]
+          python3 scripts/verify-arconath-workflow.py
           upstream=397b032cbf865e9c3ddfab89d533ec19325e1273
           test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_COMMIT"
           git merge-base --is-ancestor "$upstream" HEAD
@@ -63,13 +76,15 @@ jobs:
             workflow = YAML.safe_load(File.read(".github/workflows/arconath-security.yml"), aliases: false)
             triggers = workflow.fetch(true)
             abort "untrusted workflow trigger" unless triggers.keys.sort == ["push", "workflow_dispatch"]
-            abort "push scope mismatch" unless triggers.dig("push", "branches") == ["arconath/**"]
-            dispatch = triggers.dig("workflow_dispatch", "inputs", "source_commit")
-            abort "exact source_commit input required" unless dispatch&.fetch("required") == true
+            abort "push scope mismatch" unless triggers.dig("push", "branches") == ["main"]
+            abort "arbitrary source input is forbidden" if triggers.dig("workflow_dispatch", "inputs")
             jobs = workflow.fetch("jobs")
             abort "expected exactly one job" unless jobs.size == 1
             jobs.each do |name, job|
               abort "reusable job forbidden: #{name}" if job.key?("uses")
+              abort "job must require a protected trusted ref" unless job.fetch("if").include?("github.ref_protected == true")
+              abort "job repository pin missing" unless job.fetch("if").include?("github.repository == \x27Arconath/actions-runner\x27")
+              abort "job ref pin missing" unless job.fetch("if").include?("github.ref == \x27refs/heads/main\x27")
               runs_on = job.fetch("runs-on")
               expected = {
                 "group" => "arconath-jit",
