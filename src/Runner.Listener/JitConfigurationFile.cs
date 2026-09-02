@@ -31,6 +31,7 @@ namespace GitHub.Runner.Listener
         private const ushort OwnerReadWrite = 0x0180;
         private const ushort OwnerAll = 0x01c0;
         private const ushort GroupReadExecute = 0x0028;
+        private const ushort OtherExecute = 0x0001;
         private const ulong ResolveNoMagicLinks = 0x02;
         private const ulong ResolveNoSymlinks = 0x04;
         private const ulong ResolveBeneath = 0x08;
@@ -134,9 +135,10 @@ namespace GitHub.Runner.Listener
                 if ((jobStatus.Mode & FileTypeMask) != Directory ||
                     jobStatus.UserId != geteuid() ||
                     (jobPermissions != OwnerAll &&
-                     jobPermissions != (OwnerAll | GroupReadExecute)))
+                     jobPermissions != (OwnerAll | GroupReadExecute) &&
+                     jobPermissions != (OwnerAll | GroupReadExecute | OtherExecute)))
                 {
-                    throw new InvalidOperationException("JIT job directory must be runner-owned and mode 0700 or 0750.");
+                    throw new InvalidOperationException("JIT job directory must be listener-owned and mode 0700, 0750, or 0751.");
                 }
 
                 using SafeFileHandle configHandle = OpenBeneath(

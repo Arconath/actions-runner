@@ -62,6 +62,27 @@ namespace GitHub.Runner.Common.Tests.Listener
         [Fact]
         [Trait("Level", "L0")]
         [Trait("Category", "Runner")]
+        public void ReadsAndUnlinksWithRootlessTraversalDirectory()
+        {
+            if (!OperatingSystem.IsLinux())
+            {
+                return;
+            }
+
+            string path = CreateConfig("rootless", "rootless");
+            string job = Path.GetDirectoryName(path)!;
+            File.SetUnixFileMode(
+                job,
+                UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute |
+                    UnixFileMode.GroupRead | UnixFileMode.GroupExecute | UnixFileMode.OtherExecute);
+
+            Assert.Equal("rootless", JitConfigurationFile.ReadAndDelete(path, _root));
+            Assert.False(File.Exists(path));
+        }
+
+        [Fact]
+        [Trait("Level", "L0")]
+        [Trait("Category", "Runner")]
         public void RejectsDirectAndParentSymlinks()
         {
             if (!OperatingSystem.IsLinux())
