@@ -53,4 +53,7 @@ skipped job. The workflow checks the repository, ref, ref type, and
 Every job is parsed and required to use the canonical `arconath-jit` runner
 group and complete label tuple. Branch protection is therefore a deployment
 prerequisite for this workflow; it must remain disabled until that protection
-is present.
+is present. `scripts/verify-arconath-workflow.py` also enforces the single
+active-workflow allowlist, commit-pinned actions, checkout credential removal,
+and read-only permissions; upstream workflow definitions, when retained for
+comparison, stay outside `.github/workflows/`.
